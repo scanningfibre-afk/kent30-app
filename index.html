@@ -226,7 +226,7 @@ if (data.logs && Array.isArray(data.logs) && data.logs.length > 0) setLogs(data.
 const localUsers = LS.get("kw_users", null);
 const isDefaultUsers = !localUsers || (Object.keys(localUsers).length <= 2 && localUsers.admin?.password === "admin123");
 if (isDefaultUsers && data.users && typeof data.users === "object" && Object.keys(data.users).length > 0) {
-;
+setUsers(data.users);
 }
 setSyncStatus("ok");
 setTimeout(() => setSyncStatus(null), 2000);
@@ -270,7 +270,7 @@ return (
 </div>
 <div style={{ color: G.amber, fontSize: 13, letterSpacing: 4, fontWeight: 700 }}>WAREHOUSE SYSTEM</div>
 </div>
-<div style={{ background: "#fff", borderRadius: 10, padding: "24px 20px",maxHeight:"85vh", overflowY:"auto"", width: "100%", maxWidth: 380, boxShadow: "0 8px 40px rgba(0,0,0,.4)" }}>
+<div style={{ background: "#fff", borderRadius: 10, padding: "32px 28px", width: "100%", maxWidth: 380, boxShadow: "0 8px 40px rgba(0,0,0,.4)" }}>
 <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 24, color: G.dark }}>Sign In</div>
 <label className="lbl">USERNAME</label>
 <input className="inp" value={u} onChange={e => setU(e.target.value)} onKeyDown={e => e.key === "Enter" && submit()} autoComplete="username" autoCapitalize="off" />
