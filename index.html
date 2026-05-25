@@ -226,7 +226,7 @@ if (data.logs && Array.isArray(data.logs) && data.logs.length > 0) setLogs(data.
 const localUsers = LS.get("kw_users", null);
 const isDefaultUsers = !localUsers || (Object.keys(localUsers).length <= 2 && localUsers.admin?.password === "admin123");
 if (isDefaultUsers && data.users && typeof data.users === "object" && Object.keys(data.users).length > 0) {
-setUsers(data.users);
+;
 }
 setSyncStatus("ok");
 setTimeout(() => setSyncStatus(null), 2000);
