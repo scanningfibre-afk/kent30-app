@@ -695,7 +695,7 @@ value={search} onChange={e=>setSearch(e.target.value)} />
 <td style={{ padding:"12px 14px", fontFamily:"monospace", fontSize:13, color:G.muted }}>{p.barcode||"—"}</td>
 <td style={{ padding:"12px 14px", fontWeight:600 }}>{p.description}</td>
 <td style={{ padding:"12px 14px", color:G.muted }}>{p.category||"—"}</td>
-<td style={{ padding:"12px 14px" }}><button className="btn-ghost-sm" onClick={()=>startEdit(p)}>EDIT</button></td>
+<td style={{ padding:"12px 14px" }}><button className="btn-ghost-sm" onClick={()=>startEdit(p)}>EDIT</button><button className="btn-red-sm" style={{marginLeft:"6px"}} onClick={()=>{ if(window.confirm("Delete "+p.description+"?")){ setProducts(prev=>prev.filter(x=>x.code!==p.code)); showToast(p.description+" deleted"); addLog("PRODUCT_DELETE",p.description,session.username); } }}>DELETE</button></td>
 </tr>
 ))}
 {filtered.length===0 && <tr><td colSpan={5} style={{ padding:24, textAlign:"center", color:G.muted }}>No products found</td></tr>}
