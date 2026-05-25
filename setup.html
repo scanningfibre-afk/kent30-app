@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>KW30 Setup</title>
+<style>
+body{background:#1a1a1a;color:#fff;font-family:sans-serif;padding:20px;text-align:center;}
+button{background:#E8A000;color:#fff;border:none;padding:20px;font-size:18px;border-radius:8px;width:100%;margin-top:20px;cursor:pointer;}
+p{color:#aaa;margin-top:10px;}
+</style>
+</head>
+<body>
+<h2>KENTWW30 Setup</h2>
+<p>Tap the button to connect Google Sheets</p>
+<button onclick="connect()">CONNECT GOOGLE SHEETS</button>
+<p id="msg"></p>
+<script>
+function connect(){
+localStorage.setItem("kw_gs_url","https://script.google.com/macros/s/AKfycbzDUQM7A6DsOkIBCjVAV4s-pcMXQDBCX5VmO7pDxD1vkFV8Ku7LTrYbia9JLzP7haHbXQ/exec");
+document.getElementById("msg").innerHTML="✓ Connected! <a href='/' style='color:#E8A000'>Go to app</a>";
+}
+</script>
+</body>
+</html>
