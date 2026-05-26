@@ -970,8 +970,7 @@ function PickerHome({ session, onAddStock, onRemoveAisle, onRemoveFloor, onMoveS
   const [searchResults, setSearchResults] = useState(null);
 
   const searchProduct = () => {
-    const q = String(searchQ||"").replace(/[
-      ]/g,"").trim();
+    const q = String(searchQ||"").trim();
     if (!q) return;
     const qu = q.toUpperCase();
     // Find product by code, barcode or description
