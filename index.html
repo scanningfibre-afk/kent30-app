@@ -228,7 +228,7 @@ const isDefaultUsers = !localUsers || (Object.keys(localUsers).length <= 2 && lo
 if (isDefaultUsers && data.users && typeof data.users === "object" && Object.keys(data.users).length > 0) {
 setUsers(data.users);
 }
-setSyncStatus("ok");
+setSyncStatus("ok"); window._appReady=true;;
 setTimeout(() => setSyncStatus(null), 2000);
 } catch (e) {
 console.error("Load error:", e);
