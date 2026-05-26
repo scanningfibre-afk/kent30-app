@@ -1003,6 +1003,7 @@ function PickerHome({ session, onAddStock, onRemoveAisle, onRemoveFloor, onMoveS
       results.push({ locId: "NO STOCK", customName: "", isFloor: false, description: prod.description, bestBefore: "—", qty: 0, noStock: true });
     }
     setSearchResults(results);
+    setSearchQ(""); // clear input after successful search
   };
 
   return (
