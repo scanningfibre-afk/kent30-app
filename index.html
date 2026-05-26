@@ -52,8 +52,15 @@ const INIT_PRODUCTS = [
 
 // Look up product by barcode OR product code
 function findProduct(products, input) {
-  const q = (input||"").trim().toUpperCase();
-  return products.find(p => p.barcode === q || p.code === q || p.code === input?.trim().toUpperCase());
+  if (!input || !products) return null;
+  const q = String(input).trim().toUpperCase();
+  return products.find(p => {
+    if (!p) return false;
+    // Convert barcode to string for comparison (Google Sheets may store as number)
+    const barcode = String(p.barcode || "").trim();
+    const code = String(p.code || "").trim().toUpperCase();
+    return barcode === q || barcode === String(input).trim() || code === q;
+  });
 }
 
 // Rack J: J01–J05, each with slots A–E
@@ -709,10 +716,10 @@ function AdminProducts({ products, setProducts, addLog, session, showToast }) {
     if (!p || !p.code) return false;
     if (!search) return true;
     const q = search.toLowerCase();
-    return (p.code||"").toLowerCase().includes(q) ||
-           (p.barcode||"").toLowerCase().includes(q) ||
-           (p.description||"").toLowerCase().includes(q) ||
-           (p.category||"").toLowerCase().includes(q);
+    return (String(p.code)||"").toLowerCase().includes(q) ||
+           (String(p.barcode||"")).toLowerCase().includes(q) ||
+           (String(p.description||"")).toLowerCase().includes(q) ||
+           (String(p.category||"")).toLowerCase().includes(q);
   });
 
   return (
