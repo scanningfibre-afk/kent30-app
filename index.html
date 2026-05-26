@@ -1606,10 +1606,10 @@ function RemoveFloorFlow({ session, warehouse, products, floorStock, setFloorSto
     const lockedBy = isBinLocked ? isBinLocked(floorKey) : false;
     if (lockedBy) { setError(`⚠ This product is being worked on by ${lockedBy}`); return; }
     if (lockBin) lockBin(floorKey);
-    const onFloor = warehouseStock.filter(e => e.productCode === c);
+    const onFloor = warehouseStock.filter(e => String(e.productCode||"") === String(inCatalogue.code||""));
     if (!onFloor.length) { setError(`No floor stock for "${inCatalogue.description}" at ${warehouse}.`); setScanCode(""); return; }
-    setMatchedCode(c); setError("");
-    if (onFloor.length === 1) { setSelectedIdx(warehouseStock.findIndex(e => e.productCode === c)); setStep("confirm_remove"); }
+    setMatchedCode(inCatalogue.code); setError("");
+    if (onFloor.length === 1) { setSelectedIdx(warehouseStock.findIndex(e => e.productCode === inCatalogue.code)); setStep("confirm_remove"); }
     else setStep("select_entry");
   };
 
@@ -2111,7 +2111,7 @@ function MoveFromFloor({ session, products, locations, setLocations, floorStock,
     if(!inCat){setError(`Product not found. Try code or barcode.`);setScanCode("");return;}
     const onFloor=warehouseStock.filter(e=>e.productCode===inCat.code);
     if(!onFloor.length){setError(`No floor stock for "${inCat.description}" at ${warehouse}.`);setScanCode("");return;}
-    setMatchedCode(c);setError("");
+    setMatchedCode(inCat.code);setError("");
     if(onFloor.length===1){setSelectedIdx(warehouseStock.findIndex(e=>e.productCode===c));setStep("qty_dest");}
     else setStep("select_batch");
   };
