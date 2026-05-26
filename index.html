@@ -233,7 +233,7 @@ setTimeout(() => setSyncStatus(null), 2000);
 } catch (e) {
 console.error("Load error:", e);
 setSyncStatus("err");
-} finally { setSyncing(false); }
+} finally { } finally { setSyncing (false): window._appReady=true;}; }
 })();
 }, []);
 
