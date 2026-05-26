@@ -970,7 +970,8 @@ function PickerHome({ session, onAddStock, onRemoveAisle, onRemoveFloor, onMoveS
   const [searchResults, setSearchResults] = useState(null);
 
   const searchProduct = () => {
-    const q = String(searchQ||"").replace(/[\r\n\t]/g,"").trim();
+    const q = String(searchQ||"").replace(/[
+      ]/g,"").trim();
     if (!q) return;
     const qu = q.toUpperCase();
     // Find product by code, barcode or description
@@ -980,7 +981,7 @@ function PickerHome({ session, onAddStock, onRemoveAisle, onRemoveFloor, onMoveS
       String(p.barcode||"").trim() === qu ||
       String(p.description||"").toUpperCase().includes(qu)
     );
-    if (!prod) { setSearchResults([]); return; }
+    if (!prod) { setSearchResults([]); return; } // keep searchQ so user can see what was scanned
     // Show product info even if no stock
     const results = [];
     Object.values(locations||{}).forEach(loc => {
@@ -1022,7 +1023,7 @@ function PickerHome({ session, onAddStock, onRemoveAisle, onRemoveFloor, onMoveS
             placeholder="Scan barcode or type product code…"
             value={searchQ}
             onChange={e => { setSearchQ(e.target.value); if(!e.target.value) setSearchResults(null); }}
-            onKeyDown={e => e.key==="Enter" && searchProduct()}
+            onKeyDown={e => { if(e.key==="Enter") { e.preventDefault(); searchProduct(); } }}
           />
           <button onClick={searchProduct} style={{ background:G.amber, border:"none", borderRadius:8, padding:"0 16px", color:"#fff", fontWeight:800, fontSize:16, cursor:"pointer", minWidth:52 }}>GO</button>
         </div>
@@ -1674,14 +1675,18 @@ function RemoveFloorFlow({ session, warehouse, products, floorStock, setFloorSto
                 ))}
               </div>
               <input ref={scanRef} className="inp-dark"
-                style={{ textTransform:"uppercase", fontWeight:800, fontSize:22, letterSpacing:3, textAlign:"center" }}
-                placeholder="SCAN PRODUCT CODE" value={scanCode}
+                style={{ fontWeight:800, fontSize:22, textAlign:"center" }}
+                placeholder="SCAN BARCODE" value={scanCode}
                 onChange={e => setScanCode(e.target.value)}
-                onKeyDown={e => { if (e.key==="Enter" && scanCode.trim()) lookupProduct(scanCode); }}
+                onKeyDown={e => { if (e.key==="Enter" && scanCode.trim()) lookupProduct(scanCode.trim()); }}
                 autoComplete="off" />
+              <div style={{ display:"flex", alignItems:"center", gap:10, margin:"8px 0" }}>
+                <div style={{ flex:1, height:1, background:"#2a2a2a" }}/><span style={{ color:"#555", fontSize:12, fontWeight:700 }}>OR</span><div style={{ flex:1, height:1, background:"#2a2a2a" }}/>
+              </div>
+              <ProductCodeSearch products={products} onSelect={p=>{ setScanCode(p.code); lookupProduct(p.code); }} />
               {error && <ErrBox msg={error} />}
-              <button className="btn-amber-xl" style={{ width:"100%", marginTop:14 }}
-                onClick={() => scanCode.trim() && lookupProduct(scanCode)}>FIND PRODUCT →</button>
+              <button className="btn-amber-xl" style={{ width:"100%", marginTop:10 }}
+                onClick={() => scanCode.trim() && lookupProduct(scanCode.trim())}>FIND PRODUCT →</button>
             </>
           )}
         </div>
@@ -2188,13 +2193,13 @@ function MoveFromFloor({ session, products, locations, setLocations, floorStock,
               <SectionTitle icon="⇄" color={BLUE} title="Scan or Search Product" sub={`Floor at ${warehouse}`}/>
               <input ref={scanRef} className="inp-dark" style={{fontWeight:800,fontSize:22,letterSpacing:2,textAlign:"center"}}
                 placeholder="SCAN BARCODE" value={scanCode} onChange={e=>setScanCode(e.target.value)}
-                onKeyDown={e=>{if(e.key==="Enter"&&scanCode.trim())lookupProduct(scanCode);}} autoComplete="off"/>
+                onKeyDown={e=>{if(e.key==="Enter"&&scanCode.trim())lookupProduct(scanCode.trim());}} autoComplete="off"/>
               <div style={{display:"flex",alignItems:"center",gap:10,margin:"8px 0"}}>
                 <div style={{flex:1,height:1,background:"#2a2a2a"}}/><span style={{color:"#555",fontSize:12,fontWeight:700}}>OR</span><div style={{flex:1,height:1,background:"#2a2a2a"}}/>
               </div>
               <ProductCodeSearch products={products} onSelect={p=>{setScanCode(p.code);lookupProduct(p.code);}}/>
               {error&&<ErrBox msg={error}/>}
-              <button className="btn-xl-blue" style={{width:"100%",marginTop:10}} onClick={()=>scanCode.trim()&&lookupProduct(scanCode)}>FIND →</button>
+              <button className="btn-xl-blue" style={{width:"100%",marginTop:10}} onClick={()=>scanCode.trim()&&lookupProduct(scanCode.trim())}>FIND →</button>
             </>
           )}
           <button className="btn-outline-xl" style={{width:"100%",marginTop:10}} onClick={()=>setStep("pick_warehouse")}>← CHANGE WAREHOUSE</button>
@@ -2409,20 +2414,32 @@ function ProductCodeSearch({ products, onSelect }) {
   );
 }
 
-/* ── Custom Date Picker — DD/MM/YYYY with year spinner ── */
+/* ── Custom Date Picker — DD/MM/YYYY with year spinner on second row ── */
 function DatePicker({ value, onChange, label }) {
-  // value is "YYYY-MM-DD" or ""
   const today = new Date();
+  const todayStr = {
+    d: String(today.getDate()).padStart(2,"0"),
+    m: String(today.getMonth()+1).padStart(2,"0"),
+    y: String(today.getFullYear())
+  };
   const parseVal = (v) => {
-    if (!v) return { d: "", m: "", y: String(today.getFullYear()) };
+    if (!v) return todayStr; // default to today
     const parts = v.split("-");
     if (parts.length === 3) return { d: parts[2], m: parts[1], y: parts[0] };
-    return { d: "", m: "", y: String(today.getFullYear()) };
+    return todayStr;
   };
   const [parts, setParts] = React.useState(() => parseVal(value));
 
+  // Set today as default on mount if no value
+  React.useEffect(() => {
+    if (!value) {
+      const { d, m, y } = todayStr;
+      onChange(`${y}-${m}-${d}`);
+    }
+  }, []);
+
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  const daysInMonth = (m, y) => new Date(y, m, 0).getDate();
+  const daysInMonth = (m, y) => new Date(parseInt(y), parseInt(m), 0).getDate();
 
   const update = (newParts) => {
     setParts(newParts);
@@ -2439,35 +2456,34 @@ function DatePicker({ value, onChange, label }) {
     update({ ...parts, y: newY });
   };
 
-  const days = parts.m && parts.y ? Array.from({length: daysInMonth(parseInt(parts.m), parseInt(parts.y))}, (_,i) => i+1) : Array.from({length:31},(_,i)=>i+1);
+  const days = parts.m && parts.y ? Array.from({length: daysInMonth(parts.m, parts.y)}, (_,i) => i+1) : Array.from({length:31},(_,i)=>i+1);
 
   return (
     <div>
       {label && <label className="lbl">{label}</label>}
-      <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-        {/* Day */}
+      {/* Row 1: Day + Month */}
+      <div style={{ display:"flex", gap:6, marginBottom:6 }}>
         <select className="sel" value={parts.d} onChange={e => update({...parts, d:e.target.value})}
-          style={{ flex:1, minHeight:42 }}>
-          <option value="">DD</option>
+          style={{ flex:1, minHeight:44, fontSize:15 }}>
+          <option value="">Day</option>
           {days.map(d => <option key={d} value={String(d).padStart(2,"0")}>{String(d).padStart(2,"0")}</option>)}
         </select>
-        {/* Month */}
         <select className="sel" value={parts.m} onChange={e => update({...parts, m:e.target.value})}
-          style={{ flex:1.2, minHeight:42 }}>
-          <option value="">MM</option>
+          style={{ flex:1.5, minHeight:44, fontSize:15 }}>
+          <option value="">Month</option>
           {months.map((mn,i) => <option key={i+1} value={String(i+1).padStart(2,"0")}>{mn}</option>)}
         </select>
-        {/* Year spinner */}
-        <div style={{ display:"flex", alignItems:"center", gap:4, flex:1.5 }}>
-          <button type="button" onClick={() => spinYear(-1)}
-            style={{ background:"#333", border:"none", borderRadius:6, color:"#fff", width:32, height:42, fontSize:18, cursor:"pointer", flexShrink:0 }}>‹</button>
-          <input className="inp" value={parts.y}
-            onChange={e => update({...parts, y:e.target.value})}
-            style={{ textAlign:"center", minHeight:42, padding:"6px 4px", flex:1, fontSize:15 }}
-            maxLength={4} placeholder="YYYY"/>
-          <button type="button" onClick={() => spinYear(1)}
-            style={{ background:"#333", border:"none", borderRadius:6, color:"#fff", width:32, height:42, fontSize:18, cursor:"pointer", flexShrink:0 }}>›</button>
-        </div>
+      </div>
+      {/* Row 2: Year full width */}
+      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+        <button type="button" onClick={() => spinYear(-1)}
+          style={{ background:"#333", border:"none", borderRadius:6, color:"#fff", width:44, height:44, fontSize:22, cursor:"pointer", flexShrink:0 }}>‹</button>
+        <input className="inp" value={parts.y}
+          onChange={e => update({...parts, y:e.target.value})}
+          style={{ textAlign:"center", minHeight:44, padding:"6px 4px", flex:1, fontSize:18, fontWeight:700 }}
+          maxLength={4} placeholder="YYYY"/>
+        <button type="button" onClick={() => spinYear(1)}
+          style={{ background:"#333", border:"none", borderRadius:6, color:"#fff", width:44, height:44, fontSize:22, cursor:"pointer", flexShrink:0 }}>›</button>
       </div>
     </div>
   );
