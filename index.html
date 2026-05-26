@@ -174,6 +174,7 @@ function App() {
   const [syncing,    setSyncing]    = useState(false);
   const [syncStatus, setSyncStatus] = useState(null); // "ok" | "err" | null
   const [gsConfigured] = useState(() => !!localStorage.getItem("kw_gs_url"));
+  const [lockedBins,  setLockedBins]  = useState({}); // { binId: { user, ts } }
 
   // ── Persist to localStorage (always, as fast local cache) ──
   useEffect(() => LS.set("kw_products",  products),           [products]);
@@ -266,11 +267,43 @@ function App() {
     if (GS.configured()) GS.appendLog(entry).catch(console.error);
   }, []);
 
-  const logout = () => setSession(null);
+  const logout = () => {
+    // Release any locks held by this user on logout
+    setLockedBins(prev => {
+      const next = {...prev};
+      Object.keys(next).forEach(k => { if(next[k].user === session?.username) delete next[k]; });
+      return next;
+    });
+    setSession(null);
+  };
+
+  const lockBin = (binId) => {
+    if (!binId) return true;
+    const lock = lockedBins[binId];
+    if (lock && lock.user !== session?.username) {
+      // Check if lock is stale (> 5 minutes)
+      if (Date.now() - lock.ts < 5 * 60 * 1000) return false; // locked by someone else
+    }
+    setLockedBins(prev => ({ ...prev, [binId]: { user: session?.username, ts: Date.now() } }));
+    return true;
+  };
+
+  const unlockBin = (binId) => {
+    if (!binId) return;
+    setLockedBins(prev => { const n={...prev}; delete n[binId]; return n; });
+  };
+
+  const isBinLocked = (binId) => {
+    const lock = lockedBins[binId];
+    if (!lock) return false;
+    if (lock.user === session?.username) return false;
+    if (Date.now() - lock.ts > 5 * 60 * 1000) return false; // stale lock
+    return lock.user;
+  };
 
   if (!session) return <LoginScreen users={users} onLogin={setSession} syncStatus={syncStatus} syncing={syncing} gsConfigured={gsConfigured} />;
   if (session.role === "admin") return <AdminApp session={session} products={products} setProducts={setProducts} locations={locations} setLocations={setLocations} users={users} setUsers={setUsers} logs={logs} floorStock={floorStock} setFloorStock={setFloorStock} addLog={addLog} logout={logout} syncing={syncing} syncStatus={syncStatus} />;
-  return <PickerApp session={session} products={products} locations={locations} setLocations={setLocations} floorStock={floorStock} setFloorStock={setFloorStock} addLog={addLog} logout={logout} syncing={syncing} syncStatus={syncStatus} />;
+  return <PickerApp session={session} products={products} locations={locations} setLocations={setLocations} floorStock={floorStock} setFloorStock={setFloorStock} addLog={addLog} logout={logout} syncing={syncing} syncStatus={syncStatus} lockBin={lockBin} unlockBin={unlockBin} isBinLocked={isBinLocked} />;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -672,11 +705,15 @@ function AdminProducts({ products, setProducts, addLog, session, showToast }) {
     setEditing(null); setAdding(false);
   };
 
-  const filtered = products.filter(p =>
-    !search || p.code.toLowerCase().includes(search.toLowerCase()) ||
-    (p.barcode||"").includes(search) ||
-    p.description.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = (products || []).filter(p => {
+    if (!p || !p.code) return false;
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (p.code||"").toLowerCase().includes(q) ||
+           (p.barcode||"").toLowerCase().includes(q) ||
+           (p.description||"").toLowerCase().includes(q) ||
+           (p.category||"").toLowerCase().includes(q);
+  });
 
   return (
     <div>
@@ -864,7 +901,7 @@ function AdminLogs({ logs }) {
 ══════════════════════════════════════════════════════════════════════════ */
 const WAREHOUSES = WAREHOUSES_CONST;
 
-function PickerApp({ session, products, locations, setLocations, floorStock, setFloorStock, addLog, logout, syncing, syncStatus }) {
+function PickerApp({ session, products, locations, setLocations, floorStock, setFloorStock, addLog, logout, syncing, syncStatus, lockBin, unlockBin, isBinLocked }) {
   const [mode, setMode] = useState(null); // null | "add" | "remove_aisle" | "remove_floor" | "move"
   const [warehouse, setWarehouse] = useState(null);
   const [toast, setToast] = useState(null);
@@ -904,11 +941,11 @@ function PickerApp({ session, products, locations, setLocations, floorStock, set
         </div>
       )}
       <div style={{ padding: 16, maxWidth: 520, margin: "0 auto" }}>
-        {!mode && <PickerHome session={session} onAddStock={() => setMode("add")} onRemoveAisle={() => setMode("remove_aisle")} onRemoveFloor={(wh) => { setWarehouse(wh); setMode("remove_floor"); }} onMoveStock={() => setMode("move")} />}
-        {mode === "add"           && <AddStockFlow    session={session} products={products} locations={locations} setLocations={setLocations} floorStock={floorStock} setFloorStock={setFloorStock} addLog={addLog} showToast={showToast} onDone={goHome} />}
-        {mode === "remove_aisle"  && <RemoveAisleFlow session={session} locations={locations} setLocations={setLocations} addLog={addLog} showToast={showToast} onDone={goHome} />}
-        {mode === "remove_floor"  && <RemoveFloorFlow session={session} warehouse={warehouse} products={products} floorStock={floorStock} setFloorStock={setFloorStock} addLog={addLog} showToast={showToast} onDone={goHome} />}
-        {mode === "move"           && <MoveStockFlow   session={session} products={products} locations={locations} setLocations={setLocations} floorStock={floorStock} setFloorStock={setFloorStock} addLog={addLog} showToast={showToast} onDone={goHome} />}
+        {!mode && <PickerHome session={session} onAddStock={() => setMode("add")} onRemoveAisle={() => setMode("remove_aisle")} onRemoveFloor={(wh) => { setWarehouse(wh); setMode("remove_floor"); }} onMoveStock={() => setMode("move")}  products={products} locations={locations} floorStock={floorStock} />}
+        {mode === "add"           && <AddStockFlow    session={session} products={products} locations={locations} setLocations={setLocations} floorStock={floorStock} setFloorStock={setFloorStock} addLog={addLog} showToast={showToast} onDone={goHome} lockBin={lockBin} unlockBin={unlockBin} isBinLocked={isBinLocked} />}
+        {mode === "remove_aisle"  && <RemoveAisleFlow session={session} locations={locations} setLocations={setLocations} addLog={addLog} showToast={showToast} onDone={goHome} lockBin={lockBin} unlockBin={unlockBin} isBinLocked={isBinLocked} />}
+        {mode === "remove_floor"  && <RemoveFloorFlow session={session} warehouse={warehouse} products={products} floorStock={floorStock} setFloorStock={setFloorStock} addLog={addLog} showToast={showToast} onDone={goHome} lockBin={lockBin} unlockBin={unlockBin} isBinLocked={isBinLocked} />}
+        {mode === "move"           && <MoveStockFlow   session={session} products={products} locations={locations} setLocations={setLocations} floorStock={floorStock} setFloorStock={setFloorStock} addLog={addLog} showToast={showToast} onDone={goHome} lockBin={lockBin} unlockBin={unlockBin} isBinLocked={isBinLocked} />}
       </div>
       {toast && <Toast toast={toast} />}
     </div>
@@ -918,9 +955,40 @@ function PickerApp({ session, products, locations, setLocations, floorStock, set
 /* ═══════════════════════════════════════════════════════════════════════════
    PICKER HOME SCREEN
 ══════════════════════════════════════════════════════════════════════════ */
-function PickerHome({ session, onAddStock, onRemoveAisle, onRemoveFloor, onMoveStock }) {
+function PickerHome({ session, onAddStock, onRemoveAisle, onRemoveFloor, onMoveStock, products, locations, floorStock }) {
   const [removeOpen, setRemoveOpen] = useState(false);
   const [floorOpen, setFloorOpen] = useState(false);
+  const [searchQ, setSearchQ] = useState("");
+  const [searchResults, setSearchResults] = useState(null);
+
+  const searchProduct = () => {
+    const q = (searchQ||"").trim();
+    if (!q) return;
+    const qu = q.toUpperCase();
+    const prod = (products||[]).find(p =>
+      (p.code||"").toUpperCase() === qu ||
+      (p.barcode||"") === q ||
+      (p.description||"").toUpperCase().includes(qu)
+    );
+    if (!prod) { setSearchResults([]); return; }
+    const results = [];
+    Object.values(locations||{}).forEach(loc => {
+      (loc.contents||[]).forEach((c) => {
+        if (c.productCode === prod.code) {
+          results.push({ locId: loc.id, customName: loc.customName||"", isFloor: false, description: c.description, bestBefore: c.bestBefore, qty: c.qty });
+        }
+      });
+    });
+    Object.entries(floorStock||{}).forEach(([warehouse, items]) => {
+      (items||[]).forEach(item => {
+        if (item.productCode === prod.code) {
+          results.push({ locId: warehouse, customName: warehouse, isFloor: true, description: item.description, bestBefore: item.bestBefore, qty: item.qty });
+        }
+      });
+    });
+    results.sort((a,b) => (a.bestBefore||"").localeCompare(b.bestBefore||""));
+    setSearchResults(results);
+  };
 
   return (
     <div style={{ animation: "fadeUp .25s ease" }}>
@@ -929,6 +997,49 @@ function PickerHome({ session, onAddStock, onRemoveAisle, onRemoveFloor, onMoveS
         <div style={{ color: "#888", fontSize: 15, marginBottom: 2 }}>Good {getGreeting()},</div>
         <div style={{ color: "#fff", fontWeight: 800, fontSize: 30 }}>{session.name}</div>
         <div style={{ color: "#444", fontSize: 13, marginTop: 4 }}>{new Date().toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" })}</div>
+      </div>
+
+      {/* ── FIND PRODUCT ── */}
+      <div style={{ background:"#1e1e1e", borderRadius:12, padding:16, marginBottom:16 }}>
+        <div style={{ color:"#fff", fontWeight:800, fontSize:16, marginBottom:10, letterSpacing:1 }}>🔍 FIND PRODUCT</div>
+        <div style={{ display:"flex", gap:8 }}>
+          <input className="inp-dark" style={{ flex:1, fontSize:15 }}
+            placeholder="Scan or type product code…"
+            value={searchQ}
+            onChange={e => { setSearchQ(e.target.value); if(!e.target.value) setSearchResults(null); }}
+            onKeyDown={e => e.key==="Enter" && searchProduct()}
+          />
+          <button onClick={searchProduct} style={{ background:G.amber, border:"none", borderRadius:8, padding:"0 16px", color:"#fff", fontWeight:800, fontSize:16, cursor:"pointer", minWidth:52 }}>GO</button>
+        </div>
+        {searchResults !== null && (
+          <div style={{ marginTop:12 }}>
+            {searchResults.length === 0
+              ? <div style={{ color:"#666", fontSize:14, textAlign:"center", padding:"12px 0" }}>No stock found for this product</div>
+              : <div style={{ display:"grid", gap:8 }}>
+                  <div style={{ fontSize:12, color:G.amber, fontWeight:700, letterSpacing:1 }}>{searchResults.length} RESULT{searchResults.length!==1?"S":""}</div>
+                  {searchResults.map((r,i) => (
+                    <div key={i} style={{ background:"#2a2a2a", borderRadius:8, padding:"12px 14px", border:`1px solid ${r.isFloor?"#4a3a1a":"#1a3a1a"}` }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                        <div>
+                          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                            <span style={{ fontFamily:"monospace", fontWeight:800, fontSize:18, color:r.isFloor?G.amber:G.green }}>{r.locId}</span>
+                            {r.customName && r.locId!==r.customName && <span style={{ fontSize:12, color:"#888" }}>{r.customName}</span>}
+                            {r.isFloor && <span style={{ background:"#3a2a00", color:G.amber, borderRadius:4, padding:"1px 6px", fontSize:11, fontWeight:700 }}>FLOOR</span>}
+                          </div>
+                          <div style={{ fontSize:13, color:"#ddd", fontWeight:600 }}>{r.description}</div>
+                          <div style={{ fontSize:12, color:G.amber, marginTop:2 }}>BB: <b>{r.bestBefore||"—"}</b></div>
+                        </div>
+                        <div style={{ textAlign:"right", flexShrink:0, marginLeft:12 }}>
+                          <div style={{ fontWeight:800, fontSize:26, color:"#fff", lineHeight:1 }}>{r.qty}</div>
+                          <div style={{ fontSize:11, color:"#888" }}>ctns</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+            }
+          </div>
+        )}
       </div>
 
       {/* ── ADD STOCK ── */}
@@ -1027,7 +1138,7 @@ function getGreeting() {
 ══════════════════════════════════════════════════════════════════════════ */
 const QUICK_QTYS = [12, 24, 48, 96];
 
-function AddStockFlow({ session, products, locations, setLocations, floorStock, setFloorStock, addLog, showToast, onDone }) {
+function AddStockFlow({ session, products, locations, setLocations, floorStock, setFloorStock, addLog, showToast, onDone, lockBin, unlockBin, isBinLocked }) {
   const [step, setStep]               = useState("scan_product"); // scan_product | details_aisle | select_bin | floor_confirm
   const [productCode, setProductCode] = useState("");
   const [foundProduct, setFoundProduct] = useState(null);
@@ -1078,12 +1189,27 @@ function AddStockFlow({ session, products, locations, setLocations, floorStock, 
     const locs = bins || aisleBins;
     const loc = locations[binId] || locs.find(l => l.id === binId);
     if (!loc) return;
-    const alreadyHas = loc.contents.findIndex(c => c.productCode === foundProduct.code);
-    const newContents = alreadyHas >= 0
-      ? loc.contents.map((c,i) => i === alreadyHas ? { ...c, qty: c.qty + parseInt(qty), bestBefore, storedAt: new Date().toISOString() } : c)
-      : [...loc.contents, { productCode: foundProduct.code, description: foundProduct.description, qty: parseInt(qty), bestBefore, storedAt: new Date().toISOString() }];
-    setLocations(prev => ({ ...prev, [loc.id]: { ...loc, contents: newContents } }));
+    const lockedBy = isBinLocked ? isBinLocked(binId) : false;
+    if (lockedBy) { showToast(`⚠ Bin ${binId} is in use by ${lockedBy}`, "err"); return; }
+    if (lockBin) lockBin(binId);
+    // Match by BOTH productCode AND bestBefore date — different BB = separate entry
+    const exactMatch = loc.contents.findIndex(c => c.productCode === foundProduct.code && c.bestBefore === bestBefore);
+    // Count distinct product codes for slot limit check
+    const distinctCodes = new Set(loc.contents.map(c => c.productCode));
+    const isNewProduct = !distinctCodes.has(foundProduct.code);
+    if (exactMatch >= 0) {
+      // Same product + same BB → add qty
+      const newContents = loc.contents.map((c,i) => i === exactMatch ? { ...c, qty: c.qty + parseInt(qty) } : c);
+      setLocations(prev => ({ ...prev, [loc.id]: { ...loc, contents: newContents } }));
+    } else if (!isNewProduct || distinctCodes.size < loc.maxProducts) {
+      // New BB date for existing product, or new product with space → add entry
+      const newContents = [...loc.contents, { productCode: foundProduct.code, description: foundProduct.description, qty: parseInt(qty), bestBefore, storedAt: new Date().toISOString() }];
+      setLocations(prev => ({ ...prev, [loc.id]: { ...loc, contents: newContents } }));
+    } else {
+      showToast(`Bin ${loc.id} is full`, "err"); return;
+    }
     addLog("STORE", `${foundProduct.description} (${foundProduct.code}) → ${loc.id} | Qty:${qty} | BB:${bestBefore}`, session.username);
+    if (unlockBin) unlockBin(loc.id);
     showToast(`✓ Stored ${qty} ctns at ${loc.id}`);
     onDone();
   };
@@ -1216,7 +1342,7 @@ function AddStockFlow({ session, products, locations, setLocations, floorStock, 
                       </div>
                       {loc.contents.length === 0
                         ? <div style={{ fontSize:13, color:"#4a8a4a" }}>Empty — tap to store here</div>
-                        : loc.contents.map((c,i) => <div key={i} style={{ fontSize:12, color:"#aaa" }}>{c.description} · {c.qty} ctns</div>)
+                        : loc.contents.map((c,i) => <div key={i} style={{ fontSize:12, color:"#aaa" }}>{c.description} · {c.qty} ctns{c.bestBefore ? ` · BB: ${c.bestBefore}` : ""}</div>)
                       }
                     </div>
                     <div style={{ display:"flex", gap:4, flexShrink:0, marginLeft:10 }}>
@@ -1277,7 +1403,7 @@ function AddStockFlow({ session, products, locations, setLocations, floorStock, 
    2. Select product if 2+ → merged qty+confirm on one screen
    Qty input + Take All button + Confirm all on same screen = 1 fewer tap
 ══════════════════════════════════════════════════════════════════════════ */
-function RemoveAisleFlow({ session, locations, setLocations, addLog, showToast, onDone }) {
+function RemoveAisleFlow({ session, locations, setLocations, addLog, showToast, onDone, lockBin, unlockBin, isBinLocked }) {
   const [step, setStep]             = useState("scan_aisle");
   const [aisleCode, setAisleCode]   = useState("");
   const [aisleBins, setAisleBins]   = useState([]);
@@ -1308,6 +1434,9 @@ function RemoveAisleFlow({ session, locations, setLocations, addLog, showToast, 
     const allBins = bins || aisleBins;
     const loc = locations[binId] || allBins.find(l => l.id === binId);
     if (!loc?.contents.length) return;
+    const lockedBy = isBinLocked ? isBinLocked(binId) : false;
+    if (lockedBy) { showToast(`⚠ Bin ${binId} is in use by ${lockedBy}`, "err"); return; }
+    if (lockBin) lockBin(binId);
     setSelectedBin(binId);
     if (loc.contents.length === 1) { setSelectedIdx(0); setStep("remove_qty"); }
     else setStep("select_product");
@@ -1322,6 +1451,7 @@ function RemoveAisleFlow({ session, locations, setLocations, addLog, showToast, 
       : currentLoc.contents.map((c,i) => i === selectedIdx ? { ...c, qty:newQty } : c);
     setLocations(prev => ({ ...prev, [selectedBin]: { ...currentLoc, contents:newContents } }));
     addLog(all?"REMOVE_ALL":"REMOVE", `${currentItem.description} ← ${selectedBin} | Removed:${n} | Left:${newQty}`, session.username);
+    if (unlockBin) unlockBin(selectedBin);
     showToast(`✓ Removed ${n} ctns from ${selectedBin}`);
     onDone();
   };
@@ -1375,15 +1505,16 @@ function RemoveAisleFlow({ session, locations, setLocations, addLog, showToast, 
 
       {step === "select_product" && currentLoc && (
         <div style={{ animation:"fadeUp .2s ease" }}>
-          <div style={{ color:"#fff", fontWeight:800, fontSize:20, marginBottom:4 }}>Select Product</div>
-          <div style={{ color:"#aaa", fontSize:14, marginBottom:14 }}>Bin <span style={{ color:G.amber, fontFamily:"monospace", fontWeight:700 }}>{selectedBin}</span></div>
+          <div style={{ color:"#fff", fontWeight:800, fontSize:20, marginBottom:4 }}>Select Batch to Remove</div>
+          <div style={{ color:"#aaa", fontSize:14, marginBottom:14 }}>Bin <span style={{ color:G.amber, fontFamily:"monospace", fontWeight:700 }}>{selectedBin}</span> — {currentLoc.contents.length} {currentLoc.contents.length===1?"entry":"entries"}</div>
           <div style={{ display:"grid", gap:10 }}>
             {currentLoc.contents.map((c,i) => (
               <button key={i} onClick={() => { setSelectedIdx(i); setStep("remove_qty"); }}
                 style={{ padding:"16px 18px", borderRadius:10, border:`2px solid ${G.red}`, background:"#1a0808", cursor:"pointer", textAlign:"left", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                 <div>
                   <div style={{ color:"#fff", fontWeight:800, fontSize:18 }}>{c.description}</div>
-                  <div style={{ color:"#aaa", fontSize:13, marginTop:2 }}>BB: {c.bestBefore||"—"}</div>
+                  <div style={{ color:G.amber, fontSize:13, marginTop:2, fontWeight:700 }}>BB: {c.bestBefore||"—"}</div>
+                  <div style={{ color:"#aaa", fontSize:12 }}>Stored: {c.storedAt ? new Date(c.storedAt).toLocaleDateString() : "—"}</div>
                 </div>
                 <div style={{ textAlign:"right" }}>
                   <div style={{ color:G.red, fontWeight:800, fontSize:28, lineHeight:1 }}>{c.qty}</div>
@@ -1433,7 +1564,7 @@ function RemoveAisleFlow({ session, locations, setLocations, addLog, showToast, 
 /* ═══════════════════════════════════════════════════════════════════════════
    REMOVE STOCK — FLOOR (unchanged, already optimal)
 ══════════════════════════════════════════════════════════════════════════ */
-function RemoveFloorFlow({ session, warehouse, products, floorStock, setFloorStock, addLog, showToast, onDone }) {
+function RemoveFloorFlow({ session, warehouse, products, floorStock, setFloorStock, addLog, showToast, onDone, lockBin, unlockBin, isBinLocked }) {
   const [step, setStep]               = useState("scan_product");
   const [scanCode, setScanCode]       = useState("");
   const [matchedCode, setMatchedCode] = useState(null);
@@ -1453,6 +1584,11 @@ function RemoveFloorFlow({ session, warehouse, products, floorStock, setFloorSto
   const lookupProduct = (code) => {
     const inCatalogue = findProduct(products, code);
     if (!inCatalogue) { setError(`Product not found. Try product code or barcode.`); setScanCode(""); return; }
+    // Check floor lock
+    const floorKey = `FLOOR_${warehouse}_${inCatalogue.code}`;
+    const lockedBy = isBinLocked ? isBinLocked(floorKey) : false;
+    if (lockedBy) { setError(`⚠ This product is being worked on by ${lockedBy}`); return; }
+    if (lockBin) lockBin(floorKey);
     const onFloor = warehouseStock.filter(e => e.productCode === c);
     if (!onFloor.length) { setError(`No floor stock for "${inCatalogue.description}" at ${warehouse}.`); setScanCode(""); return; }
     setMatchedCode(c); setError("");
@@ -1471,6 +1607,7 @@ function RemoveFloorFlow({ session, warehouse, products, floorStock, setFloorSto
     setFloorStock(prev => ({...prev, [warehouse]: newStock}));
     addLog(all?"FLOOR_REMOVE_ALL":"FLOOR_REMOVE",
       `${entry.description} ← FLOOR/${warehouse} | Removed:${n} | Left:${newQty}`, session.username);
+    if (unlockBin) unlockBin(`FLOOR_${warehouse}_${foundProduct.code}`);
     showToast(`✓ Removed ${n} ctns from ${warehouse} floor`);
     onDone();
   };
@@ -1599,7 +1736,7 @@ function RemoveFloorFlow({ session, warehouse, products, floorStock, setFloorSto
    MOVE STOCK — OPTIMISED (2 steps)
    All sub-modes merged qty+destination on one screen
 ══════════════════════════════════════════════════════════════════════════ */
-function MoveStockFlow({ session, products, locations, setLocations, floorStock, setFloorStock, addLog, showToast, onDone }) {
+function MoveStockFlow({ session, products, locations, setLocations, floorStock, setFloorStock, addLog, showToast, onDone, lockBin, unlockBin, isBinLocked }) {
   const [subMode, setSubMode] = useState(null);
   if (!subMode) return <MoveHome onSelect={setSubMode} />;
   if (subMode === "aisle_to_aisle" || subMode === "aisle_to_floor")
