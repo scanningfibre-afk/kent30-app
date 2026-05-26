@@ -1585,6 +1585,7 @@ function RemoveFloorFlow({ session, warehouse, products, floorStock, setFloorSto
   const [step, setStep]               = useState("scan_product");
   const [scanCode, setScanCode]       = useState("");
   const [matchedCode, setMatchedCode] = useState(null);
+  const [foundProduct, setFoundProduct] = useState(null);
   const [selectedIdx, setSelectedIdx] = useState(null);
   const [removeQty, setRemoveQty]     = useState("");
   const [error, setError]             = useState("");
@@ -1608,7 +1609,7 @@ function RemoveFloorFlow({ session, warehouse, products, floorStock, setFloorSto
     if (lockBin) lockBin(floorKey);
     const onFloor = warehouseStock.filter(e => String(e.productCode||"") === String(inCatalogue.code||""));
     if (!onFloor.length) { setError(`No floor stock for "${inCatalogue.description}" at ${warehouse}.`); setScanCode(""); return; }
-    setMatchedCode(inCatalogue.code); setError("");
+    setMatchedCode(inCatalogue.code); setFoundProduct(inCatalogue); setError("");
     if (onFloor.length === 1) { setSelectedIdx(warehouseStock.findIndex(e => e.productCode === inCatalogue.code)); setStep("confirm_remove"); }
     else setStep("select_entry");
   };
@@ -1624,7 +1625,7 @@ function RemoveFloorFlow({ session, warehouse, products, floorStock, setFloorSto
     setFloorStock(prev => ({...prev, [warehouse]: newStock}));
     addLog(all?"FLOOR_REMOVE_ALL":"FLOOR_REMOVE",
       `${entry.description} ← FLOOR/${warehouse} | Removed:${n} | Left:${newQty}`, session.username);
-    if (unlockBin) unlockBin(`FLOOR_${warehouse}_${foundProduct.code}`);
+    if (unlockBin && foundProduct) unlockBin(`FLOOR_${warehouse}_${foundProduct.code}`);
     showToast(`✓ Removed ${n} ctns from ${warehouse} floor`);
     onDone();
   };
@@ -2107,13 +2108,19 @@ function MoveFromFloor({ session, products, locations, setLocations, floorStock,
   const toBinsFiltered  = aisleToBins.filter(l=>{const hp=l.contents.find(c=>c.productCode===selectedEntry?.productCode);return hp||l.contents.length<l.maxProducts;});
 
   const lookupProduct = (code) => {
-    const inCat=findProduct(products, String(code||"").trim());
-    if(!inCat){setError(`Product not found. Try code or barcode.`);setScanCode("");return;}
-    const onFloor=warehouseStock.filter(e=>e.productCode===inCat.code);
-    if(!onFloor.length){setError(`No floor stock for "${inCat.description}" at ${warehouse}.`);setScanCode("");return;}
-    setMatchedCode(inCat.code);setError("");
-    if(onFloor.length===1){setSelectedIdx(warehouseStock.findIndex(e=>e.productCode===c));setStep("qty_dest");}
-    else setStep("select_batch");
+    if (!warehouse) { setError("Please select a warehouse first."); return; }
+    const inCat = findProduct(products, String(code||"").trim());
+    if (!inCat) { setError(`Product not found. Try code or barcode.`); setScanCode(""); return; }
+    const stock = floorStock[warehouse] || [];
+    const onFloor = stock.filter(e => String(e.productCode||"") === String(inCat.code||""));
+    if (!onFloor.length) { setError(`No floor stock for "${inCat.description}" at ${warehouse}.`); setScanCode(""); return; }
+    setMatchedCode(inCat.code); setError("");
+    if (onFloor.length === 1) {
+      setSelectedIdx(stock.findIndex(e => String(e.productCode||"") === String(inCat.code||"")));
+      setStep("qty_dest");
+    } else {
+      setStep("select_batch");
+    }
   };
 
   const lookupToAisle = (code) => {
