@@ -597,7 +597,7 @@ function AdminLocations({ locations, setLocations, products, addLog, session, sh
                   </div>
                   {editLoc === `${loc.id}-${idx}` ? (
                     <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
-                      <div><label className="lbl">BEST BEFORE</label><input className="inp" type="date" value={c.bestBefore} onChange={e=>editContent(loc.id,idx,"bestBefore",e.target.value)} style={{ minHeight:38, padding:"6px 10px" }}/></div>
+                      <div><label className="lbl">BEST BEFORE</label><DatePicker value={c.bestBefore} onChange={v=>editContent(loc.id,idx,"bestBefore",v)} /></div>
                       <div><label className="lbl">QTY</label><input className="inp" type="number" value={c.qty} onChange={e=>editContent(loc.id,idx,"qty",parseInt(e.target.value)||0)} style={{ width:90, minHeight:38, padding:"6px 10px" }}/></div>
                       <button className="btn-green-sm" style={{ marginTop:18 }} onClick={()=>{ setEditLoc(null); showToast("Saved"); addLog("ADMIN_EDIT",`Edited ${c.productCode} at ${loc.id}`,session.username); }}>SAVE</button>
                     </div>
@@ -1016,10 +1016,10 @@ function PickerHome({ session, onAddStock, onRemoveAisle, onRemoveFloor, onMoveS
 
       {/* ── FIND PRODUCT ── */}
       <div style={{ background:"#1e1e1e", borderRadius:12, padding:16, marginBottom:16 }}>
-        <div style={{ color:"#fff", fontWeight:800, fontSize:16, marginBottom:10, letterSpacing:1 }}>🔍 FIND PRODUCT</div>
+        <div style={{ color:"#fff", fontWeight:800, fontSize:16, marginBottom:10, letterSpacing:1 }}>📦 STOCK VIEW</div>
         <div style={{ display:"flex", gap:8 }}>
           <input className="inp-dark" style={{ flex:1, fontSize:15 }}
-            placeholder="Scan or type product code…"
+            placeholder="Scan barcode or type product code…"
             value={searchQ}
             onChange={e => { setSearchQ(e.target.value); if(!e.target.value) setSearchResults(null); }}
             onKeyDown={e => e.key==="Enter" && searchProduct()}
@@ -1297,8 +1297,9 @@ function AddStockFlow({ session, products, locations, setLocations, floorStock, 
 
           {/* Best before */}
           <label className="lbl-dark" style={{ marginTop:16 }}>BEST BEFORE DATE</label>
-          <input className="inp-dark" type="date" value={bestBefore}
-            onChange={e => setBestBefore(e.target.value)} style={{ fontSize:17, minHeight:52 }} />
+          <div style={{ background:"#1e1e1e", borderRadius:8, padding:"10px 12px" }}>
+            <DatePicker value={bestBefore} onChange={setBestBefore} />
+          </div>
 
           {/* Aisle inline */}
           <label className="lbl-dark" style={{ marginTop:16 }}>AISLE BARCODE</label>
@@ -1598,7 +1599,7 @@ function RemoveFloorFlow({ session, warehouse, products, floorStock, setFloorSto
   const selectedEntry = selectedIdx !== null ? warehouseStock[selectedIdx] : null;
 
   const lookupProduct = (code) => {
-    const inCatalogue = findProduct(products, code);
+    const inCatalogue = findProduct(products, String(code||"").trim());
     if (!inCatalogue) { setError(`Product not found. Try product code or barcode.`); setScanCode(""); return; }
     // Check floor lock
     const floorKey = `FLOOR_${warehouse}_${inCatalogue.code}`;
@@ -1675,7 +1676,7 @@ function RemoveFloorFlow({ session, warehouse, products, floorStock, setFloorSto
               <input ref={scanRef} className="inp-dark"
                 style={{ textTransform:"uppercase", fontWeight:800, fontSize:22, letterSpacing:3, textAlign:"center" }}
                 placeholder="SCAN PRODUCT CODE" value={scanCode}
-                onChange={e => setScanCode(e.target.value.toUpperCase())}
+                onChange={e => setScanCode(e.target.value)}
                 onKeyDown={e => { if (e.key==="Enter" && scanCode.trim()) lookupProduct(scanCode); }}
                 autoComplete="off" />
               {error && <ErrBox msg={error} />}
@@ -2102,9 +2103,9 @@ function MoveFromFloor({ session, products, locations, setLocations, floorStock,
   const toBinsFiltered  = aisleToBins.filter(l=>{const hp=l.contents.find(c=>c.productCode===selectedEntry?.productCode);return hp||l.contents.length<l.maxProducts;});
 
   const lookupProduct = (code) => {
-    const inCat=findProduct(products, code);
+    const inCat=findProduct(products, String(code||"").trim());
     if(!inCat){setError(`Product not found. Try code or barcode.`);setScanCode("");return;}
-    const onFloor=warehouseStock.filter(e=>e.productCode===c);
+    const onFloor=warehouseStock.filter(e=>e.productCode===inCat.code);
     if(!onFloor.length){setError(`No floor stock for "${inCat.description}" at ${warehouse}.`);setScanCode("");return;}
     setMatchedCode(c);setError("");
     if(onFloor.length===1){setSelectedIdx(warehouseStock.findIndex(e=>e.productCode===c));setStep("qty_dest");}
@@ -2404,6 +2405,70 @@ function ProductCodeSearch({ products, onSelect }) {
       {open && q.trim() && results.length === 0 && (
         <div style={{ background:"#1e1e1e", border:"1px solid #333", borderRadius:8, marginTop:4, padding:"12px 14px", color:"#666", fontSize:14 }}>No products match "{q}"</div>
       )}
+    </div>
+  );
+}
+
+/* ── Custom Date Picker — DD/MM/YYYY with year spinner ── */
+function DatePicker({ value, onChange, label }) {
+  // value is "YYYY-MM-DD" or ""
+  const today = new Date();
+  const parseVal = (v) => {
+    if (!v) return { d: "", m: "", y: String(today.getFullYear()) };
+    const parts = v.split("-");
+    if (parts.length === 3) return { d: parts[2], m: parts[1], y: parts[0] };
+    return { d: "", m: "", y: String(today.getFullYear()) };
+  };
+  const [parts, setParts] = React.useState(() => parseVal(value));
+
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const daysInMonth = (m, y) => new Date(y, m, 0).getDate();
+
+  const update = (newParts) => {
+    setParts(newParts);
+    const { d, m, y } = newParts;
+    if (d && m && y && y.length === 4) {
+      const dd = String(d).padStart(2,"0");
+      const mm = String(m).padStart(2,"0");
+      onChange(`${y}-${mm}-${dd}`);
+    }
+  };
+
+  const spinYear = (dir) => {
+    const newY = String(parseInt(parts.y||today.getFullYear()) + dir);
+    update({ ...parts, y: newY });
+  };
+
+  const days = parts.m && parts.y ? Array.from({length: daysInMonth(parseInt(parts.m), parseInt(parts.y))}, (_,i) => i+1) : Array.from({length:31},(_,i)=>i+1);
+
+  return (
+    <div>
+      {label && <label className="lbl">{label}</label>}
+      <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+        {/* Day */}
+        <select className="sel" value={parts.d} onChange={e => update({...parts, d:e.target.value})}
+          style={{ flex:1, minHeight:42 }}>
+          <option value="">DD</option>
+          {days.map(d => <option key={d} value={String(d).padStart(2,"0")}>{String(d).padStart(2,"0")}</option>)}
+        </select>
+        {/* Month */}
+        <select className="sel" value={parts.m} onChange={e => update({...parts, m:e.target.value})}
+          style={{ flex:1.2, minHeight:42 }}>
+          <option value="">MM</option>
+          {months.map((mn,i) => <option key={i+1} value={String(i+1).padStart(2,"0")}>{mn}</option>)}
+        </select>
+        {/* Year spinner */}
+        <div style={{ display:"flex", alignItems:"center", gap:4, flex:1.5 }}>
+          <button type="button" onClick={() => spinYear(-1)}
+            style={{ background:"#333", border:"none", borderRadius:6, color:"#fff", width:32, height:42, fontSize:18, cursor:"pointer", flexShrink:0 }}>‹</button>
+          <input className="inp" value={parts.y}
+            onChange={e => update({...parts, y:e.target.value})}
+            style={{ textAlign:"center", minHeight:42, padding:"6px 4px", flex:1, fontSize:15 }}
+            maxLength={4} placeholder="YYYY"/>
+          <button type="button" onClick={() => spinYear(1)}
+            style={{ background:"#333", border:"none", borderRadius:6, color:"#fff", width:32, height:42, fontSize:18, cursor:"pointer", flexShrink:0 }}>›</button>
+        </div>
+      </div>
     </div>
   );
 }
