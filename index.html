@@ -53,13 +53,14 @@ const INIT_PRODUCTS = [
 // Look up product by barcode OR product code
 function findProduct(products, input) {
   if (!input || !products) return null;
-  const q = String(input).trim().toUpperCase();
+  // Strip ALL whitespace, newlines, carriage returns and invisible chars
+  const clean = String(input).replace(/[\r\n\t\s]/g, "").trim();
+  const q = clean.toUpperCase();
   return products.find(p => {
     if (!p) return false;
-    // Convert barcode to string for comparison (Google Sheets may store as number)
-    const barcode = String(p.barcode || "").trim();
-    const code = String(p.code || "").trim().toUpperCase();
-    return barcode === q || barcode === String(input).trim() || code === q;
+    const barcode = String(p.barcode || "").replace(/[\r\n\t\s]/g, "").trim();
+    const code = String(p.code || "").replace(/[\r\n\t\s]/g, "").trim().toUpperCase();
+    return barcode === clean || barcode === q || code === q;
   });
 }
 
@@ -969,31 +970,38 @@ function PickerHome({ session, onAddStock, onRemoveAisle, onRemoveFloor, onMoveS
   const [searchResults, setSearchResults] = useState(null);
 
   const searchProduct = () => {
-    const q = (searchQ||"").trim();
+    const q = String(searchQ||"").replace(/[\r\n\t]/g,"").trim();
     if (!q) return;
     const qu = q.toUpperCase();
+    // Find product by code, barcode or description
     const prod = (products||[]).find(p =>
-      (p.code||"").toUpperCase() === qu ||
-      (p.barcode||"") === q ||
-      (p.description||"").toUpperCase().includes(qu)
+      String(p.code||"").toUpperCase() === qu ||
+      String(p.barcode||"").trim() === q ||
+      String(p.barcode||"").trim() === qu ||
+      String(p.description||"").toUpperCase().includes(qu)
     );
     if (!prod) { setSearchResults([]); return; }
+    // Show product info even if no stock
     const results = [];
     Object.values(locations||{}).forEach(loc => {
       (loc.contents||[]).forEach((c) => {
-        if (c.productCode === prod.code) {
-          results.push({ locId: loc.id, customName: loc.customName||"", isFloor: false, description: c.description, bestBefore: c.bestBefore, qty: c.qty });
+        if (String(c.productCode||"").toUpperCase() === String(prod.code||"").toUpperCase()) {
+          results.push({ locId: loc.id, customName: loc.customName||"", isFloor: false, description: c.description||prod.description, bestBefore: c.bestBefore, qty: c.qty });
         }
       });
     });
     Object.entries(floorStock||{}).forEach(([warehouse, items]) => {
       (items||[]).forEach(item => {
-        if (item.productCode === prod.code) {
-          results.push({ locId: warehouse, customName: warehouse, isFloor: true, description: item.description, bestBefore: item.bestBefore, qty: item.qty });
+        if (String(item.productCode||"").toUpperCase() === String(prod.code||"").toUpperCase()) {
+          results.push({ locId: warehouse, customName: warehouse, isFloor: true, description: item.description||prod.description, bestBefore: item.bestBefore, qty: item.qty });
         }
       });
     });
     results.sort((a,b) => (a.bestBefore||"").localeCompare(b.bestBefore||""));
+    // If no stock found, show product info with 0 qty
+    if (results.length === 0) {
+      results.push({ locId: "NO STOCK", customName: "", isFloor: false, description: prod.description, bestBefore: "—", qty: 0, noStock: true });
+    }
     setSearchResults(results);
   };
 
@@ -1025,7 +1033,7 @@ function PickerHome({ session, onAddStock, onRemoveAisle, onRemoveFloor, onMoveS
               : <div style={{ display:"grid", gap:8 }}>
                   <div style={{ fontSize:12, color:G.amber, fontWeight:700, letterSpacing:1 }}>{searchResults.length} RESULT{searchResults.length!==1?"S":""}</div>
                   {searchResults.map((r,i) => (
-                    <div key={i} style={{ background:"#2a2a2a", borderRadius:8, padding:"12px 14px", border:`1px solid ${r.isFloor?"#4a3a1a":"#1a3a1a"}` }}>
+                    <div key={i} style={{ background:"#2a2a2a", borderRadius:8, padding:"12px 14px", border:`1px solid ${r.noStock?"#333":r.isFloor?"#4a3a1a":"#1a3a1a"}` }}>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
                         <div>
                           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
@@ -1164,9 +1172,10 @@ function AddStockFlow({ session, products, locations, setLocations, floorStock, 
   useEffect(() => { if (step === "details_aisle") setTimeout(() => qtyRef.current?.focus(), 80); }, [step]);
 
   const lookupProduct = (code) => {
-    const p = findProduct(products, code);
+    const clean = String(code||"").replace(/[\r\n\t\s]/g,"").trim();
+    const p = findProduct(products, clean);
     if (p) { setFoundProduct(p); setError(""); setStep("details_aisle"); }
-    else { setError(`Product not found. Try product code or barcode.`); setProductCode(""); }
+    else { setError(`Not found: "${clean}" (${clean.length} chars). Try product code or barcode.`); setProductCode(""); }
   };
 
   const lookupAisle = (code) => {
