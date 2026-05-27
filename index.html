@@ -233,8 +233,19 @@ function App() {
         const data = await GS.loadAll();
         // Always load from Sheets if it has data — Sheets is master
         if (data.products && Array.isArray(data.products) && data.products.length > 0) {
-          setProducts(data.products);
-          LS.set("kw_products", data.products);
+          // Remove duplicates — keep first occurrence of each product code
+          const seen = new Set();
+          const deduped = data.products.filter(p => {
+            if (!p || !p.code) return false;
+            const key = String(p.code).toUpperCase().trim();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          const dupCount = data.products.length - deduped.length;
+          if (dupCount > 0) console.warn(`⚠ Removed ${dupCount} duplicate product(s) from Google Sheets`);
+          setProducts(deduped);
+          LS.set("kw_products", deduped);
         }
         if (data.locations && typeof data.locations === "object" && Object.keys(data.locations).length > 0) {
           setLocations(data.locations);
@@ -703,6 +714,7 @@ function AdminProducts({ products, setProducts, addLog, session, showToast }) {
     const code = form.code.trim().toUpperCase();
     if (adding) {
       if (products.find(p => p.code === code)) { showToast("Code already exists","err"); return; }
+      if (products.find(p => String(p.code||"").toUpperCase() === code.toUpperCase())) { showToast("Code already exists","err"); return; }
       setProducts(prev => [...prev, { code, barcode: form.barcode||"", description: form.description, category: form.category||"" }]);
       addLog("PRODUCT_ADD", form.description, session.username);
     } else {
