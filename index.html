@@ -191,7 +191,17 @@ function App() {
           setProducts(deduped); LS.set("kw_products", deduped);
         }
         if (data.locations && typeof data.locations === "object" && Object.keys(data.locations).length > 0) {
-          setLocations(data.locations); LS.set("kw_locations", data.locations);
+          // Preserve blocked/blockReason from local cache — these may not exist in older Sheets data
+          const localLocs = LS.get("kw_locations", {});
+          const merged = {};
+          Object.keys(data.locations).forEach(id => {
+            merged[id] = {
+              ...data.locations[id],
+              blocked: data.locations[id].blocked ?? localLocs[id]?.blocked ?? false,
+              blockReason: data.locations[id].blockReason ?? localLocs[id]?.blockReason ?? "",
+            };
+          });
+          setLocations(merged); LS.set("kw_locations", merged);
         }
         if (data.floorStock && typeof data.floorStock === "object") {
           setFloorStock(data.floorStock); LS.set("kw_floor", data.floorStock);
